@@ -55,6 +55,7 @@ interface Configuracion {
   direccion: string | null;
   telefono: string | null;
   email: string | null;
+  emailDueno: string | null;
   colorPrimario: string;
   colorSecundario: string;
   telegramToken: string | null;
@@ -66,6 +67,8 @@ interface Configuracion {
   toleranciaMinutos: number;
   enviarReporteDiario: boolean;
   horaReporteDiario: string;
+  notificarEntradaJefe: boolean;
+  notificarResumenDiario: boolean;
 }
 
 interface Resumen {
@@ -1414,7 +1417,10 @@ export default function SistemaAsistenciaEmpleados() {
 
               <Card className="dark:bg-gray-800">
                 <CardHeader>
-                  <CardTitle className="dark:text-white">Notificaciones Telegram</CardTitle>
+                  <CardTitle className="dark:text-white flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-blue-500" />
+                    Notificaciones Telegram
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -1436,7 +1442,51 @@ export default function SistemaAsistenciaEmpleados() {
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    El dueño recibirá notificaciones de cada entrada/salida y un reporte diario.
+                    El dueño recibirá notificaciones de cada entrada/salida y un reporte diario por Telegram.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="dark:bg-gray-800">
+                <CardHeader>
+                  <CardTitle className="dark:text-white flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-orange-500" />
+                    Notificaciones por Email
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email del Jefe/Encargado</label>
+                    <Input
+                      type="email"
+                      value={configuracion.emailDueno || ''}
+                      onChange={(e) => setConfiguracion({ ...configuracion, emailDueno: e.target.value })}
+                      className="mt-1 dark:bg-gray-700"
+                      placeholder="jefe@empresa.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={configuracion.notificarEntradaJefe ?? true}
+                        onChange={(e) => setConfiguracion({ ...configuracion, notificarEntradaJefe: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Notificar cada entrada/salida</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={configuracion.notificarResumenDiario ?? true}
+                        onChange={(e) => setConfiguracion({ ...configuracion, notificarResumenDiario: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Enviar resumen diario</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    El jefe recibirá emails con cada entrada/salida y un resumen diario de asistencia.
                   </p>
                 </CardContent>
               </Card>

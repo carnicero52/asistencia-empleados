@@ -34,6 +34,7 @@ export async function PUT(request: NextRequest) {
         direccion: data.direccion || null,
         telefono: data.telefono || null,
         email: data.email || null,
+        emailDueno: data.emailDueno || null,
         colorPrimario: data.colorPrimario,
         colorSecundario: data.colorSecundario,
         telegramToken: data.telegramToken || null,
@@ -44,7 +45,9 @@ export async function PUT(request: NextRequest) {
         horaSalidaNocturno: data.horaSalidaNocturno,
         toleranciaMinutos: data.toleranciaMinutos,
         enviarReporteDiario: data.enviarReporteDiario,
-        horaReporteDiario: data.horaReporteDiario
+        horaReporteDiario: data.horaReporteDiario,
+        notificarEntradaJefe: data.notificarEntradaJefe ?? true,
+        notificarResumenDiario: data.notificarResumenDiario ?? true
       },
       create: {
         id: 'default',
@@ -53,6 +56,7 @@ export async function PUT(request: NextRequest) {
         direccion: data.direccion || null,
         telefono: data.telefono || null,
         email: data.email || null,
+        emailDueno: data.emailDueno || null,
         colorPrimario: data.colorPrimario || '#059669',
         colorSecundario: data.colorSecundario || '#047857',
         telegramToken: data.telegramToken || null,
@@ -63,7 +67,9 @@ export async function PUT(request: NextRequest) {
         horaSalidaNocturno: data.horaSalidaNocturno || '06:00',
         toleranciaMinutos: data.toleranciaMinutos || 15,
         enviarReporteDiario: data.enviarReporteDiario ?? true,
-        horaReporteDiario: data.horaReporteDiario || '18:00'
+        horaReporteDiario: data.horaReporteDiario || '18:00',
+        notificarEntradaJefe: data.notificarEntradaJefe ?? true,
+        notificarResumenDiario: data.notificarResumenDiario ?? true
       }
     });
 

@@ -19,6 +19,88 @@ async function enviarTelegram(token: string, chatId: string, mensaje: string) {
   }
 }
 
+// Función para enviar email de notificación al jefe
+async function enviarEmailNotificacionJefe(
+  email: string,
+  nombreEmpresa: string,
+  empleado: { nombre: string; apellido: string; cargo: string; departamento: string | null; turno: string },
+  tipo: string,
+  hora: string,
+  estado: string,
+  horasTrabajadas: number | null
+) {
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return;
+
+  const fechaStr = new Date().toLocaleDateString('es-ES', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const tipoEmoji = tipo === 'entrada' ? '🟢' : '🔴';
+  const estadoTexto = estado === 'tardanza' ? ' ⚠️ TARDANZA' : '';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
+      <div style="background: ${tipo === 'entrada' ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)'}; color: white; padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="margin: 0; font-size: 20px;">${tipoEmoji} ${tipo === 'entrada' ? 'ENTRADA' : 'SALIDA'}</h1>
+        <p style="margin: 8px 0 0 0; opacity: 0.9;">${nombreEmpresa}</p>
+      </div>
+
+      <div style="background: #f9fafb; padding: 25px; border-radius: 0 0 10px 10px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <p style="font-size: 22px; font-weight: bold; color: #1f2937; margin: 0;">${empleado.nombre} ${empleado.apellido}</p>
+          <p style="color: #6b7280; margin: 5px 0 0 0;">${empleado.cargo}${empleado.departamento ? ` - ${empleado.departamento}` : ''}</p>
+        </div>
+
+        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+          <p style="font-size: 36px; font-weight: bold; color: ${tipo === 'entrada' ? '#059669' : '#dc2626'}; margin: 0;">${hora}</p>
+          <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 14px;">${fechaStr}</p>
+        </div>
+
+        ${estado === 'tardanza' ? `
+          <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 15px; border-radius: 4px;">
+            <p style="margin: 0; color: #92400e; font-weight: 500;">⚠️ Esta llegada se registró como TARDANZA</p>
+          </div>
+        ` : ''}
+
+        ${tipo === 'salida' && horasTrabajadas ? `
+          <div style="background: #ecfdf5; border-left: 4px solid #059669; padding: 12px; margin-top: 15px; border-radius: 4px;">
+            <p style="margin: 0; color: #065f46;">⏱️ Horas trabajadas hoy: <strong>${horasTrabajadas.toFixed(1)} horas</strong></p>
+          </div>
+        ` : ''}
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; text-align: center;">
+          <span style="padding: 4px 12px; background: ${empleado.turno === 'diurno' ? '#fef3c7' : '#e0e7ff'}; color: ${empleado.turno === 'diurno' ? '#92400e' : '#3730a3'}; border-radius: 12px; font-size: 12px; font-weight: 500;">
+            TURNO ${empleado.turno.toUpperCase()}
+          </span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: `${nombreEmpresa} <onboarding@resend.dev>`,
+        to: email,
+        subject: `${tipoEmoji} ${tipo === 'entrada' ? 'Entrada' : 'Salida'} - ${empleado.nombre} ${empleado.apellido}`,
+        html
+      })
+    });
+    console.log('Email de notificación enviado a:', email);
+  } catch (error) {
+    console.error('Error enviando email de notificación:', error);
+  }
+}
+
 // Función para calcular si es tardanza
 function esTardanza(horaActual: string, horaEntrada: string, toleranciaMinutos: number): boolean {
   const [hActual, mActual] = horaActual.split(':').map(Number);
@@ -229,6 +311,25 @@ ${tipo === 'salida' && horasTrabajadas ? `⏱️ ${horasTrabajadas.toFixed(1)}h 
         `;
         await enviarTelegram(config.telegramToken, config.telegramChatIdDueno, mensajeDueno);
       }
+    }
+
+    // Enviar email de notificación al jefe
+    if (config?.notificarEntradaJefe && config?.emailDueno) {
+      await enviarEmailNotificacionJefe(
+        config.emailDueno,
+        config.nombreEmpresa,
+        {
+          nombre: empleado.nombre,
+          apellido: empleado.apellido,
+          cargo: empleado.cargo,
+          departamento: empleado.departamento,
+          turno: empleado.turno
+        },
+        tipo,
+        horaActual,
+        estado,
+        horasTrabajadas
+      );
     }
 
     return NextResponse.json({

@@ -59,6 +59,7 @@ model Configuracion {
   direccion              String?
   telefono               String?
   email                  String?
+  emailDueno             String?  // Email del jefe para recibir notificaciones
   colorPrimario          String   @default("#059669")
   colorSecundario        String   @default("#047857")
   telegramToken          String?
@@ -70,6 +71,8 @@ model Configuracion {
   toleranciaMinutos      Int      @default(15)
   enviarReporteDiario    Boolean  @default(true)
   horaReporteDiario      String   @default("18:00")
+  notificarEntradaJefe   Boolean  @default(true)  // Notificar al jefe cada entrada/salida
+  notificarResumenDiario Boolean  @default(true)  // Enviar resumen diario
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
