@@ -208,13 +208,25 @@ export default function SistemaAsistenciaEmpleados() {
 
             if (response.ok && data.success) {
               const asistencia = data.asistencia;
+              const empleado = data.empleado || asistencia.empleado;
               const tipoTexto = asistencia.tipo === 'entrada' ? '🟢 ENTRADA' : '🔴 SALIDA';
               const estadoTexto = asistencia.estado === 'tardanza' ? ' ⚠️ TARDANZA' : '';
 
               setMensaje({
                 tipo: asistencia.estado === 'tardanza' ? 'error' : 'success',
-                texto: `${tipoTexto} - ${data.empleado.nombre} ${data.empleado.apellido}${estadoTexto}\n${data.empleado.cargo} | ${data.empleado.turno.toUpperCase()}`
+                texto: `${tipoTexto} - ${empleado.nombre} ${empleado.apellido}${estadoTexto}\n${empleado.cargo} | ${empleado.turno?.toUpperCase() || asistencia.turno.toUpperCase()}`
               });
+
+              // Recargar asistencias
+              try {
+                const asisRes = await fetch('/api/asistencia');
+                if (asisRes.ok) {
+                  const asisData = await asisRes.json();
+                  setAsistencias(asisData);
+                }
+              } catch (e) {
+                console.error('Error actualizando lista:', e);
+              }
 
               // Vibrar si es posible
               if (navigator.vibrate) {
