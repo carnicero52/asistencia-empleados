@@ -6,7 +6,8 @@ import {
   Users, Clock, Settings, BarChart3, LogIn, LogOut, Sun, Moon,
   ChevronRight, Edit, Trash2, Download, QrCode, Plus, Search,
   AlertCircle, CheckCircle, XCircle, Building, Phone, Mail,
-  Briefcase, Calendar, Timer, X, Save, RefreshCw, Camera, CameraOff
+  Briefcase, Calendar, Timer, X, Save, RefreshCw, Camera, CameraOff,
+  Send, MessageCircle, Bell
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -99,10 +100,14 @@ export default function SistemaAsistenciaEmpleados() {
   const [modalEditar, setModalEditar] = useState<Empleado | null>(null);
   const [modalQR, setModalQR] = useState<Empleado | null>(null);
   const [modalPin, setModalPin] = useState(false);
+  const [modalTelegram, setModalTelegram] = useState<Empleado | null>(null);
+  const [modalEmail, setModalEmail] = useState<Empleado | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [telegramChatIdInput, setTelegramChatIdInput] = useState('');
+  const [emailEnviando, setEmailEnviando] = useState(false);
 
   // Estados de formularios
   const [formEmpleado, setFormEmpleado] = useState({
@@ -331,6 +336,25 @@ export default function SistemaAsistenciaEmpleados() {
       stopScanner();
     }
   }, [modo, startScanner, stopScanner]);
+
+  // Auto-actualización cada 10 segundos en modo recepción
+  useEffect(() => {
+    if (modo === 'recepcion') {
+      const intervalo = setInterval(async () => {
+        try {
+          const asisRes = await fetch('/api/asistencia');
+          if (asisRes.ok) {
+            const asisData = await asisRes.json();
+            setAsistencias(asisData);
+          }
+        } catch (e) {
+          console.error('Error auto-actualizando:', e);
+        }
+      }, 10000); // 10 segundos
+
+      return () => clearInterval(intervalo);
+    }
+  }, [modo]);
 
   // Funciones de empleados
   const crearEmpleado = async () => {
@@ -574,6 +598,73 @@ export default function SistemaAsistenciaEmpleados() {
     link.download = `carnet_${empleado.codigo}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
+  };
+
+  // Guardar Telegram Chat ID del empleado
+  const guardarTelegramChatId = async () => {
+    if (!modalTelegram) return;
+
+    try {
+      const response = await fetch('/api/empleados', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: modalTelegram.id,
+          telegramChatId: telegramChatIdInput,
+          recibirNotificaciones: true
+        })
+      });
+
+      if (response.ok) {
+        await cargarDatos();
+        setModalTelegram(null);
+        setTelegramChatIdInput('');
+        setMensaje({ tipo: 'success', texto: 'Telegram vinculado correctamente' });
+      }
+    } catch (error) {
+      setMensaje({ tipo: 'error', texto: 'Error al guardar Telegram' });
+    }
+    setTimeout(() => setMensaje(null), 3000);
+  };
+
+  // Enviar QR por email
+  const enviarQRPorEmail = async (empleado: Empleado) => {
+    if (!empleado.email) {
+      setMensaje({ tipo: 'error', texto: 'El empleado no tiene email registrado' });
+      setTimeout(() => setMensaje(null), 3000);
+      return;
+    }
+
+    setEmailEnviando(true);
+    try {
+      const response = await fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: empleado.email,
+          nombre: `${empleado.nombre} ${empleado.apellido}`,
+          codigo: empleado.codigo,
+          cargo: empleado.cargo,
+          turno: empleado.turno,
+          horaEntrada: empleado.horaEntrada,
+          horaSalida: empleado.horaSalida,
+          codigoQr: empleado.codigoQr,
+          nombreEmpresa: configuracion?.nombreEmpresa || 'Empresa'
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMensaje({ tipo: 'success', texto: `QR enviado a ${empleado.email}` });
+      } else {
+        setMensaje({ tipo: 'error', texto: data.error || 'Error al enviar email' });
+      }
+    } catch (error) {
+      setMensaje({ tipo: 'error', texto: 'Error de conexión al enviar email' });
+    }
+    setEmailEnviando(false);
+    setTimeout(() => setMensaje(null), 5000);
   };
 
   // Filtros
@@ -1035,6 +1126,26 @@ export default function SistemaAsistenciaEmpleados() {
                                 </Button>
                                 <Button size="sm" variant="ghost" onClick={() => descargarCarnet(e)}>
                                   <Download className="w-4 h-4 text-emerald-600" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setModalTelegram(e);
+                                    setTelegramChatIdInput(e.telegramChatId || '');
+                                  }}
+                                  title="Vincular Telegram"
+                                >
+                                  <MessageCircle className={`w-4 h-4 ${e.telegramChatId ? 'text-blue-600' : 'text-gray-400'}`} />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => enviarQRPorEmail(e)}
+                                  disabled={emailEnviando || !e.email}
+                                  title={e.email ? `Enviar QR a ${e.email}` : 'Sin email registrado'}
+                                >
+                                  <Mail className={`w-4 h-4 ${e.email ? 'text-orange-600' : 'text-gray-400'}`} />
                                 </Button>
                                 <Button size="sm" variant="ghost" onClick={() => eliminarEmpleado(e.id)}>
                                   <Trash2 className="w-4 h-4 text-red-600" />
@@ -1600,6 +1711,119 @@ export default function SistemaAsistenciaEmpleados() {
                 </Button>
                 <Button variant="destructive" className="flex-1" onClick={borrarHistorial}>
                   Borrar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal Vincular Telegram */}
+      {modalTelegram && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-sm dark:bg-gray-800">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="dark:text-white flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-blue-500" />
+                Vincular Telegram
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => { setModalTelegram(null); setTelegramChatIdInput(''); }}>
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="font-medium text-gray-800 dark:text-white">{modalTelegram.nombre} {modalTelegram.apellido}</p>
+                <p className="text-sm text-gray-500">{modalTelegram.cargo}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Para recibir notificaciones, el empleado debe:
+                </p>
+                <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                  <li>Abrir Telegram y buscar al bot de la empresa</li>
+                  <li>Iniciar una conversación con el bot</li>
+                  <li>Enviar el comando /start</li>
+                  <li>Copiar su Chat ID y pegarlo aquí</li>
+                </ol>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Chat ID de Telegram</label>
+                <Input
+                  placeholder="Ej: 123456789"
+                  value={telegramChatIdInput}
+                  onChange={(e) => setTelegramChatIdInput(e.target.value)}
+                  className="mt-1 dark:bg-gray-700"
+                />
+              </div>
+
+              {modalTelegram.telegramChatId && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <Bell className="w-4 h-4" />
+                  Ya vinculado - Recibe notificaciones
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => { setModalTelegram(null); setTelegramChatIdInput(''); }}>
+                  Cancelar
+                </Button>
+                <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={guardarTelegramChatId}>
+                  <Bell className="w-4 h-4 mr-2" />
+                  Guardar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal Enviar Email */}
+      {modalEmail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-sm dark:bg-gray-800">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="dark:text-white flex items-center gap-2">
+                <Mail className="w-5 h-5 text-orange-500" />
+                Enviar QR por Email
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setModalEmail(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                <p className="font-medium text-gray-800 dark:text-white">{modalEmail.nombre} {modalEmail.apellido}</p>
+                <p className="text-sm text-gray-500">{modalEmail.cargo}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email del empleado</label>
+                <Input
+                  type="email"
+                  value={modalEmail.email || ''}
+                  className="mt-1 dark:bg-gray-700 bg-gray-100"
+                  readOnly
+                />
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Se enviará un email con el código QR del empleado, sus datos de acceso y el carnet descargable.
+              </p>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setModalEmail(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                  onClick={() => { enviarQRPorEmail(modalEmail); setModalEmail(null); }}
+                  disabled={!modalEmail.email}
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Enviar
                 </Button>
               </div>
             </CardContent>
