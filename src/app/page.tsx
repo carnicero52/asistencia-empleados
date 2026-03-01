@@ -199,17 +199,16 @@ export default function SistemaAsistenciaEmpleados() {
           qrbox: { width: 250, height: 250 },
         },
         async (decodedText: string) => {
-          // BLOQUEO: Evitar escaneos múltiples
-          const now = Date.now();
-          const COOLDOWN_MS = 3000; // 3 segundos de espera entre escaneos
-
-          // Verificar si estamos procesando otro escaneo
+          // BLOQUEO INMEDIATO: Verificar si estamos procesando otro escaneo
           if (isScanningRef.current) {
             console.log('Escaneo ignorado: ya procesando otro');
             return;
           }
 
           // Verificar cooldown por código QR
+          const now = Date.now();
+          const COOLDOWN_MS = 4000; // 4 segundos de espera
+
           if (lastScannedRef.current) {
             const timeSinceLastScan = now - lastScannedRef.current.time;
             if (timeSinceLastScan < COOLDOWN_MS) {
@@ -218,9 +217,18 @@ export default function SistemaAsistenciaEmpleados() {
             }
           }
 
-          // Marcar como procesando
+          // Marcar como procesando INMEDIATAMENTE
           isScanningRef.current = true;
           lastScannedRef.current = { code: decodedText, time: now };
+
+          // DETENER EL SCANNER INMEDIATAMENTE para evitar múltiples callbacks
+          try {
+            await html5QrCodeRef.current?.stop();
+            setCameraActive(false);
+            console.log('Scanner detenido para procesar escaneo');
+          } catch (e) {
+            console.log('Error deteniendo scanner:', e);
+          }
 
           try {
             const response = await fetch('/api/asistencia', {
@@ -261,13 +269,26 @@ export default function SistemaAsistenciaEmpleados() {
               setMensaje({ tipo: 'error', texto: data.error || 'Error al registrar asistencia' });
             }
 
-            setTimeout(() => setMensaje(null), 5000);
+            // Esperar antes de mostrar mensaje y reiniciar
+            setTimeout(() => {
+              setMensaje(null);
+              // Reiniciar scanner después del cooldown
+              startScanner();
+            }, 4000);
+
           } catch (error) {
             console.error('Error:', error);
             setMensaje({ tipo: 'error', texto: 'Error de conexión' });
+            // Reiniciar scanner después de error
+            setTimeout(() => {
+              setMensaje(null);
+              startScanner();
+            }, 3000);
           } finally {
-            // Liberar el bloqueo después de procesar
-            isScanningRef.current = false;
+            // Liberar el bloqueo después de un delay
+            setTimeout(() => {
+              isScanningRef.current = false;
+            }, 1000);
           }
         },
         () => {}

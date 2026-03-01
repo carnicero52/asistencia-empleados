@@ -129,6 +129,18 @@ export async function POST(request: NextRequest) {
 
     console.log('Última asistencia encontrada:', ultimaAsistencia);
 
+    // PROTECCIÓN CONTRA DUPLICADOS: Verificar si hay una asistencia muy reciente (menos de 3 segundos)
+    if (ultimaAsistencia) {
+      const tiempoDesdeUltima = ahora.getTime() - new Date(ultimaAsistencia.createdAt).getTime();
+      if (tiempoDesdeUltima < 3000) {
+        console.log('DUPLICADO DETECTADO: última asistencia hace', tiempoDesdeUltima, 'ms');
+        return NextResponse.json({
+          error: 'Espere unos segundos antes de escanear de nuevo',
+          duplicado: true
+        }, { status: 429 });
+      }
+    }
+
     // Determinar si es entrada o salida
     // Si no hay asistencia previa O la última fue salida -> ENTRADA
     // Si la última fue entrada -> SALIDA
