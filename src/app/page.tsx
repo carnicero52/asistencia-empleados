@@ -108,6 +108,7 @@ export default function SistemaAsistenciaEmpleados() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [telegramChatIdInput, setTelegramChatIdInput] = useState('');
   const [emailEnviando, setEmailEnviando] = useState(false);
+  const [ultimaActualizacion, setUltimaActualizacion] = useState<Date | null>(null);
 
   // Estados de formularios
   const [formEmpleado, setFormEmpleado] = useState({
@@ -339,21 +340,35 @@ export default function SistemaAsistenciaEmpleados() {
 
   // Auto-actualización cada 10 segundos en modo recepción
   useEffect(() => {
-    if (modo === 'recepcion') {
-      const intervalo = setInterval(async () => {
-        try {
-          const asisRes = await fetch('/api/asistencia');
-          if (asisRes.ok) {
-            const asisData = await asisRes.json();
-            setAsistencias(asisData);
-          }
-        } catch (e) {
-          console.error('Error auto-actualizando:', e);
-        }
-      }, 10000); // 10 segundos
+    if (modo !== 'recepcion') return;
 
-      return () => clearInterval(intervalo);
-    }
+    console.log('Iniciando auto-actualización cada 10 segundos');
+
+    const actualizarAsistencias = async () => {
+      try {
+        console.log('Actualizando asistencias...');
+        const asisRes = await fetch('/api/asistencia');
+        if (asisRes.ok) {
+          const asisData = await asisRes.json();
+          setAsistencias(asisData);
+          setUltimaActualizacion(new Date());
+          console.log('Asistencias actualizadas:', asisData.length);
+        }
+      } catch (e) {
+        console.error('Error auto-actualizando:', e);
+      }
+    };
+
+    // Actualizar inmediatamente al entrar
+    actualizarAsistencias();
+
+    // Luego cada 10 segundos
+    const intervalo = setInterval(actualizarAsistencias, 10000);
+
+    return () => {
+      console.log('Limpiando intervalo de auto-actualización');
+      clearInterval(intervalo);
+    };
   }, [modo]);
 
   // Funciones de empleados
@@ -861,7 +876,14 @@ export default function SistemaAsistenciaEmpleados() {
 
         {/* Footer */}
         <footer className="bg-emerald-600 text-white p-3 text-center text-sm">
-          {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          <div className="flex justify-between items-center max-w-md mx-auto">
+            <span>{new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            {ultimaActualizacion && (
+              <span className="text-emerald-200 text-xs">
+                Actualizado: {ultimaActualizacion.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
         </footer>
       </div>
     );
