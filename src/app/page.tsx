@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   Users, Clock, Settings, BarChart3, LogIn, LogOut, Sun, Moon,
   ChevronRight, Edit, Trash2, Download, QrCode, Plus, Search,
   AlertCircle, CheckCircle, XCircle, Building, Phone, Mail,
-  Briefcase, Calendar, Timer, X, Save, RefreshCw
+  Briefcase, Calendar, Timer, X, Save, RefreshCw, Camera, CameraOff
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -101,6 +101,8 @@ export default function SistemaAsistenciaEmpleados() {
   const [modalPin, setModalPin] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   // Estados de formularios
   const [formEmpleado, setFormEmpleado] = useState({
@@ -117,7 +119,7 @@ export default function SistemaAsistenciaEmpleados() {
 
   // Refs
   const scannerRef = useRef<HTMLDivElement>(null);
-  const html5QrCodeRef = useRef<Html5QrcodeScanner | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
   // Aplicar modo oscuro
   useEffect(() => {
@@ -169,65 +171,105 @@ export default function SistemaAsistenciaEmpleados() {
     }
   };
 
-  // Escáner QR para modo recepción
-  const iniciarScanner = useCallback(() => {
-    if (!scannerRef.current || html5QrCodeRef.current) return;
+  // Escáner QR con Html5Qrcode directo
+  const startScanner = useCallback(async () => {
+    if (!scannerRef.current) return;
 
-    const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
-      supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-    };
-
-    html5QrCodeRef.current = new Html5QrcodeScanner('qr-reader', config, false);
-
-    html5QrCodeRef.current.render(
-      async (decodedText: string) => {
+    try {
+      setCameraError(null);
+      
+      // Limpiar escáner anterior si existe
+      if (html5QrCodeRef.current) {
         try {
-          const response = await fetch('/api/asistencia', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ codigoQr: decodedText })
-          });
-
-          const data = await response.json();
-
-          if (response.ok && data.success) {
-            const asistencia = data.asistencia;
-            const tipoTexto = asistencia.tipo === 'entrada' ? '🟢 ENTRADA' : '🔴 SALIDA';
-            const estadoTexto = asistencia.estado === 'tardanza' ? ' ⚠️ TARDANZA' : '';
-
-            setMensaje({
-              tipo: asistencia.estado === 'tardanza' ? 'error' : 'success',
-              texto: `${tipoTexto} - ${data.empleado.nombre} ${data.empleado.apellido}${estadoTexto}\n${data.empleado.cargo} | ${data.empleado.turno.toUpperCase()}`
-            });
-          } else {
-            setMensaje({ tipo: 'error', texto: data.error || 'Error al registrar asistencia' });
-          }
-
-          setTimeout(() => setMensaje(null), 5000);
-        } catch (error) {
-          console.error('Error:', error);
-          setMensaje({ tipo: 'error', texto: 'Error de conexión' });
+          await html5QrCodeRef.current.stop();
+          html5QrCodeRef.current.clear();
+        } catch (e) {
+          console.log('Limpiando escáner anterior');
         }
-      },
-      () => {}
-    );
+      }
+
+      html5QrCodeRef.current = new Html5Qrcode('qr-reader');
+      
+      await html5QrCodeRef.current.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        async (decodedText: string) => {
+          try {
+            const response = await fetch('/api/asistencia', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ codigoQr: decodedText })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+              const asistencia = data.asistencia;
+              const tipoTexto = asistencia.tipo === 'entrada' ? '🟢 ENTRADA' : '🔴 SALIDA';
+              const estadoTexto = asistencia.estado === 'tardanza' ? ' ⚠️ TARDANZA' : '';
+
+              setMensaje({
+                tipo: asistencia.estado === 'tardanza' ? 'error' : 'success',
+                texto: `${tipoTexto} - ${data.empleado.nombre} ${data.empleado.apellido}${estadoTexto}\n${data.empleado.cargo} | ${data.empleado.turno.toUpperCase()}`
+              });
+
+              // Vibrar si es posible
+              if (navigator.vibrate) {
+                navigator.vibrate(asistencia.estado === 'tardanza' ? [200, 100, 200] : 200);
+              }
+            } else {
+              setMensaje({ tipo: 'error', texto: data.error || 'Error al registrar asistencia' });
+            }
+
+            setTimeout(() => setMensaje(null), 5000);
+          } catch (error) {
+            console.error('Error:', error);
+            setMensaje({ tipo: 'error', texto: 'Error de conexión' });
+          }
+        },
+        () => {}
+      );
+
+      setCameraActive(true);
+    } catch (err: unknown) {
+      console.error('Error iniciando cámara:', err);
+      setCameraActive(false);
+      if (err instanceof Error) {
+        setCameraError(err.message || 'No se pudo acceder a la cámara');
+      } else {
+        setCameraError('No se pudo acceder a la cámara');
+      }
+    }
   }, []);
 
-  useEffect(() => {
-    if (modo === 'recepcion' && !modalEmpleado && !modalEditar && !modalQR) {
-      const timer = setTimeout(iniciarScanner, 500);
-      return () => clearTimeout(timer);
-    }
-
-    return () => {
-      if (html5QrCodeRef.current) {
-        html5QrCodeRef.current.clear().catch(() => {});
-        html5QrCodeRef.current = null;
+  const stopScanner = useCallback(async () => {
+    if (html5QrCodeRef.current) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current.clear();
+      } catch (e) {
+        console.log('Error deteniendo escáner');
       }
-    };
-  }, [modo, modalEmpleado, modalEditar, modalQR, iniciarScanner]);
+      html5QrCodeRef.current = null;
+    }
+    setCameraActive(false);
+  }, []);
+
+  // Iniciar/detener escáner cuando cambia el modo
+  useEffect(() => {
+    if (modo === 'recepcion') {
+      // Pequeño delay para que el DOM esté listo
+      const timer = setTimeout(() => {
+        startScanner();
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      stopScanner();
+    }
+  }, [modo, startScanner, stopScanner]);
 
   // Funciones de empleados
   const crearEmpleado = async () => {
@@ -377,15 +419,13 @@ export default function SistemaAsistenciaEmpleados() {
   // Generar QR para carnet
   const generarQRCarnet = (empleado: Empleado) => {
     const qrData = empleado.codigoQr;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
-    return qrUrl;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
   };
 
   // Descargar carnet
   const descargarCarnet = async (empleado: Empleado) => {
     const qrUrl = generarQRCarnet(empleado);
 
-    // Crear canvas para el carnet
     const canvas = document.createElement('canvas');
     canvas.width = 350;
     canvas.height = 500;
@@ -460,7 +500,6 @@ export default function SistemaAsistenciaEmpleados() {
         img.onerror = () => resolve();
       });
     } catch {
-      // Si no puede cargar el QR, mostrar placeholder
       ctx.fillStyle = '#f3f4f6';
       ctx.fillRect(75, 310, 200, 200);
       ctx.fillStyle = '#9ca3af';
@@ -511,13 +550,13 @@ export default function SistemaAsistenciaEmpleados() {
             <p className="text-gray-600 dark:text-gray-400 mt-2">Sistema de Registro Empresarial</p>
           </div>
 
-          <Card className="shadow-xl">
+          <Card className="shadow-xl dark:bg-gray-800">
             <CardContent className="p-6 space-y-4">
               <Button
                 onClick={() => setModo('recepcion')}
                 className="w-full h-16 text-lg bg-emerald-600 hover:bg-emerald-700"
               >
-                <LogIn className="mr-3 w-6 h-6" />
+                <Camera className="mr-3 w-6 h-6" />
                 Modo Recepción / Escáner
               </Button>
 
@@ -537,7 +576,7 @@ export default function SistemaAsistenciaEmpleados() {
                   value={passwordAdmin}
                   onChange={(e) => setPasswordAdmin(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && accederAdmin()}
-                  className="h-12"
+                  className="h-12 dark:bg-gray-700"
                 />
                 {errorPassword && <p className="text-red-500 text-sm">{errorPassword}</p>}
                 <Button onClick={accederAdmin} variant="outline" className="w-full h-12">
@@ -585,7 +624,37 @@ export default function SistemaAsistenciaEmpleados() {
         <main className="flex-1 p-4 max-w-md mx-auto w-full">
           <Card className="shadow-lg dark:bg-gray-800">
             <CardContent className="p-4">
-              <div id="qr-reader" ref={scannerRef} className="w-full" />
+              <div 
+                id="qr-reader" 
+                ref={scannerRef} 
+                className="w-full min-h-[300px] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden"
+              />
+              
+              {/* Controles de cámara */}
+              <div className="flex gap-2 mt-4">
+                {!cameraActive ? (
+                  <Button onClick={startScanner} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                    <Camera className="w-4 h-4 mr-2" />
+                    Iniciar Cámara
+                  </Button>
+                ) : (
+                  <Button onClick={stopScanner} variant="outline" className="flex-1">
+                    <CameraOff className="w-4 h-4 mr-2" />
+                    Detener Cámara
+                  </Button>
+                )}
+              </div>
+
+              {/* Error de cámara */}
+              {cameraError && (
+                <Alert className="mt-4 border-red-500 bg-red-50 dark:bg-red-900/20">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <AlertDescription className="text-red-600">
+                    {cameraError}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
                 Escanee el código QR del empleado
               </p>
@@ -601,7 +670,7 @@ export default function SistemaAsistenciaEmpleados() {
                 ) : (
                   <AlertCircle className="w-5 h-5 text-red-600" />
                 )}
-                <AlertDescription className="whitespace-pre-line font-medium">
+                <AlertDescription className="whitespace-pre-line font-medium dark:text-white">
                   {mensaje.texto}
                 </AlertDescription>
               </div>
@@ -631,6 +700,9 @@ export default function SistemaAsistenciaEmpleados() {
                   </div>
                 </div>
               ))}
+              {asistencias.length === 0 && (
+                <p className="text-center text-gray-500 py-4">No hay registros hoy</p>
+              )}
             </div>
           </div>
         </main>
@@ -910,6 +982,13 @@ export default function SistemaAsistenciaEmpleados() {
                             </td>
                           </tr>
                         ))}
+                        {empleadosFiltrados.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                              No hay empleados registrados
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -923,12 +1002,12 @@ export default function SistemaAsistenciaEmpleados() {
             <div className="space-y-4">
               <Alert className="bg-orange-50 dark:bg-orange-900/20 border-orange-200">
                 <AlertCircle className="w-4 h-4 text-orange-600" />
-                <AlertDescription>
+                <AlertDescription className="dark:text-white">
                   Use esta sección para marcar asistencia manualmente cuando un empleado no tenga su carnet QR.
                 </AlertDescription>
               </Alert>
 
-              <div className="flex gap-4 items-center">
+              <div className="flex gap-4 items-center flex-wrap">
                 <div className="flex items-center gap-2 flex-1 max-w-md">
                   <Search className="w-5 h-5 text-gray-400" />
                   <Input
@@ -966,6 +1045,11 @@ export default function SistemaAsistenciaEmpleados() {
                     </CardContent>
                   </Card>
                 ))}
+                {empleadosFiltrados.filter(e => e.estado === 'activo').length === 0 && (
+                  <div className="col-span-full text-center py-8 text-gray-500">
+                    No hay empleados activos
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1016,6 +1100,13 @@ export default function SistemaAsistenciaEmpleados() {
                             </td>
                           </tr>
                         ))}
+                        {asistencias.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              No hay registros de asistencia
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
