@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "sqlite"
+  url       = env("DATABASE_URL")
+}
+
+// Empleados de la empresa
+model Empleado {
+  id                String   @id @default(cuid())
+  codigo            String   @unique
+  nombre            String
+  apellido          String
+  telefono          String?
+  email             String?
+  cargo             String
+  departamento      String?
+  turno             String   @default("diurno") // diurno, nocturno
+  codigoQr          String   @unique
+  estado            String   @default("activo") // activo, inactivo, vacaciones, licencia
+  fechaIngreso      DateTime @default(now())
+  horaEntrada       String   @default("08:00")
+  horaSalida        String   @default("17:00")
+  telegramChatId    String?
+  recibirNotificaciones Boolean @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  asistencias       Asistencia[]
+}
+
+// Registro de Asistencias
+model Asistencia {
+  id           String   @id @default(cuid())
+  empleadoId   String
+  tipo         String   @default("entrada") // entrada, salida
+  fecha        DateTime @default(now())
+  hora         String
+  turno        String   @default("diurno")
+  estado       String   @default("puntual") // puntual, tardanza, temprano
+  metodo       String   @default("qr") // qr, manual
+  horasTrabajadas Float?
+  notas        String?
+  createdAt    DateTime @default(now())
+
+  empleado     Empleado @relation(fields: [empleadoId], references: [id], onDelete: Cascade)
+
+  @@index([empleadoId])
+  @@index([fecha])
+}
+
+// Configuración de la empresa
+model Configuracion {
+  id                     String   @id @default("default")
+  nombreEmpresa          String   @default("Mi Empresa")
+  logo                   String?
+  direccion              String?
+  telefono               String?
+  email                  String?
+  colorPrimario          String   @default("#059669")
+  colorSecundario        String   @default("#047857")
+  telegramToken          String?
+  telegramChatIdDueno    String?
+  horaEntradaDiurno      String   @default("08:00")
+  horaSalidaDiurno       String   @default("17:00")
+  horaEntradaNocturno    String   @default("18:00")
+  horaSalidaNocturno     String   @default("06:00")
+  toleranciaMinutos      Int      @default(15)
+  enviarReporteDiario    Boolean  @default(true)
+  horaReporteDiario      String   @default("18:00")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// Registro de reportes diarios enviados
+model ReporteDiario {
+  id           String   @id @default(cuid())
+  fecha        DateTime @default(now())
+  totalEmpleados Int
+  presentes    Int
+  ausentes     Int
+  tardanzas    Int
+  enviado      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
