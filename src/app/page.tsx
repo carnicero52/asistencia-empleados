@@ -120,6 +120,8 @@ export default function SistemaAsistenciaEmpleados() {
   // Refs
   const scannerRef = useRef<HTMLDivElement>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const isScanningRef = useRef(false);
+  const lastScannedRef = useRef<{ code: string; time: number } | null>(null);
 
   // Aplicar modo oscuro
   useEffect(() => {
@@ -197,6 +199,29 @@ export default function SistemaAsistenciaEmpleados() {
           qrbox: { width: 250, height: 250 },
         },
         async (decodedText: string) => {
+          // BLOQUEO: Evitar escaneos múltiples
+          const now = Date.now();
+          const COOLDOWN_MS = 3000; // 3 segundos de espera entre escaneos
+
+          // Verificar si estamos procesando otro escaneo
+          if (isScanningRef.current) {
+            console.log('Escaneo ignorado: ya procesando otro');
+            return;
+          }
+
+          // Verificar cooldown por código QR
+          if (lastScannedRef.current) {
+            const timeSinceLastScan = now - lastScannedRef.current.time;
+            if (timeSinceLastScan < COOLDOWN_MS) {
+              console.log('Escaneo ignorado: cooldown activo');
+              return;
+            }
+          }
+
+          // Marcar como procesando
+          isScanningRef.current = true;
+          lastScannedRef.current = { code: decodedText, time: now };
+
           try {
             const response = await fetch('/api/asistencia', {
               method: 'POST',
@@ -240,6 +265,9 @@ export default function SistemaAsistenciaEmpleados() {
           } catch (error) {
             console.error('Error:', error);
             setMensaje({ tipo: 'error', texto: 'Error de conexión' });
+          } finally {
+            // Liberar el bloqueo después de procesar
+            isScanningRef.current = false;
           }
         },
         () => {}
