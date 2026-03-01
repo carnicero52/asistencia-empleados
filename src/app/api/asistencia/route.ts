@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     const asistencias = await db.asistencia.findMany({
       where,
       include: { empleado: true },
-      orderBy: { fecha: 'desc' }
+      orderBy: { createdAt: 'desc' }
     });
 
     return NextResponse.json(asistencias);
@@ -79,12 +79,15 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
     const { codigoQr, metodo = 'qr', empleadoId: manualEmpleadoId } = data;
 
+    console.log('Datos recibidos:', { codigoQr, metodo, manualEmpleadoId });
+
     // Buscar empleado por QR o por ID (para registro manual)
     let empleado;
     if (codigoQr) {
       empleado = await db.empleado.findUnique({
         where: { codigoQr }
       });
+      console.log('Buscando por codigoQr:', codigoQr, 'Resultado:', empleado ? 'Encontrado' : 'No encontrado');
     } else if (manualEmpleadoId) {
       empleado = await db.empleado.findUnique({
         where: { id: manualEmpleadoId }
@@ -108,10 +111,14 @@ export async function POST(request: NextRequest) {
 
     const ahora = new Date();
     const horaActual = ahora.toTimeString().slice(0, 5);
-    const fechaHoy = new Date();
-    fechaHoy.setHours(0, 0, 0, 0);
 
-    // Buscar última asistencia del día
+    // Crear fecha de hoy en UTC para comparación
+    const fechaHoy = new Date();
+    fechaHoy.setUTCHours(0, 0, 0, 0);
+
+    console.log('Buscando última asistencia para empleado:', empleado.id, 'fecha >=', fechaHoy);
+
+    // Buscar última asistencia del día de hoy
     const ultimaAsistencia = await db.asistencia.findFirst({
       where: {
         empleadoId: empleado.id,
@@ -120,15 +127,24 @@ export async function POST(request: NextRequest) {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Determinar si es entrada o salida
-    const tipo = ultimaAsistencia?.tipo === 'entrada' ? 'salida' : 'entrada';
+    console.log('Última asistencia encontrada:', ultimaAsistencia);
 
-    // Determinar estado (puntual, tardanza, temprano)
+    // Determinar si es entrada o salida
+    // Si no hay asistencia previa O la última fue salida -> ENTRADA
+    // Si la última fue entrada -> SALIDA
+    let tipo = 'entrada';
+    if (ultimaAsistencia && ultimaAsistencia.tipo === 'entrada') {
+      tipo = 'salida';
+    }
+
+    console.log('Tipo determinado:', tipo);
+
+    // Determinar estado (puntual, tardanza)
     let estado = 'puntual';
     if (tipo === 'entrada') {
       const horaEntradaEsperada = empleado.turno === 'nocturno'
         ? (config?.horaEntradaNocturno || '18:00')
-        : (config?.horaEntradaDiurno || empleado.horaEntrada);
+        : (config?.horaEntradaDiurno || empleado.horaEntrada || '08:00');
 
       if (config && esTardanza(horaActual, horaEntradaEsperada, config.toleranciaMinutos)) {
         estado = 'tardanza';
@@ -140,6 +156,8 @@ export async function POST(request: NextRequest) {
     if (tipo === 'salida' && ultimaAsistencia) {
       horasTrabajadas = calcularHorasTrabajadas(ultimaAsistencia.hora, horaActual);
     }
+
+    console.log('Creando asistencia:', { empleadoId: empleado.id, tipo, hora: horaActual, estado });
 
     // Crear asistencia
     const asistencia = await db.asistencia.create({
@@ -156,6 +174,8 @@ export async function POST(request: NextRequest) {
       },
       include: { empleado: true }
     });
+
+    console.log('Asistencia creada:', asistencia);
 
     // Enviar notificaciones por Telegram
     if (config?.telegramToken) {
